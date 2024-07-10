@@ -18,6 +18,12 @@ const (
 	TracingSampleRate = "tracing.samplerate"
 	TracingService    = "tracing.service"
 	TracingVersion    = "tracing.version"
+
+	AirgradientInstances = "airgradient.instances"
+
+	TimescaleConnString = "timescale.conn.string"
+
+	ScrapeInterval = "scrape.interval"
 )
 
 func NewConfig() (*koanf.Koanf, error) {
