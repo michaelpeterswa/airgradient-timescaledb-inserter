@@ -70,7 +70,7 @@ func main() {
 	}
 
 	airgradientClient := airgradient.NewAirgradientClient(&http.Client{
-		Timeout: time.Second * 5,
+		Timeout: c.Duration(config.ScrapeTimeout),
 	})
 
 	airgradientInstances := strings.Split(c.String(config.AirgradientInstances), ",")

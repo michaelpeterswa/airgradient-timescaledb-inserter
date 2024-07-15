@@ -24,6 +24,7 @@ const (
 	TimescaleConnString = "timescale.conn.string"
 
 	ScrapeInterval = "scrape.interval"
+	ScrapeTimeout  = "scrape.timeout"
 )
 
 func NewConfig() (*koanf.Koanf, error) {
