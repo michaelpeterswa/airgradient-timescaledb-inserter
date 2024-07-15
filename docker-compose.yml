@@ -26,7 +26,7 @@ services:
       ATI_TRACING_SERVICE: "airgradient-timescaledb-inserter"
       ATI_TRACING_VERSION: "0.0.1"
 
-      ATI_AIRGRADIENT_INSTANCES: ""
+      ATI_AIRGRADIENT_INSTANCES: "10.0.1.250,10.0.0.34"
 
       ATI_TIMESCALE_CONN_STRING: "postgres://postgres:example@timescaledb:5432/postgres?sslmode=disable" # yamllint disable-line rule:line-length
 

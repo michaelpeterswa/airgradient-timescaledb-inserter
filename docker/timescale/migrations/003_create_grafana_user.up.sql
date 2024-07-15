@@ -8,4 +8,8 @@ GRANT
 SELECT
     ON sensors.airgradient TO grafana;
 
+GRANT
+SELECT
+    ON sensors.airgradient_aqi TO grafana;
+
 -- ALTER ROLE grafana SET search_path to sensors,public;

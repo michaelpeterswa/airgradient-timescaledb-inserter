@@ -88,12 +88,23 @@ func main() {
 				measures, err := airgradientClient.GetCurrentMeasures(clientURL)
 				if err != nil {
 					slog.Error("could not get measures", slog.String("error", err.Error()))
-					continue
 				}
 				err = timescaleClient.Insert(ctx, measures)
 				if err != nil {
 					slog.Error("could not insert measures", slog.String("error", err.Error()))
 				}
+
+				aqi, err := timescaleClient.CalculateAQI(ctx, measures.Serialno)
+				if err != nil {
+					slog.Error("could not calculate AQI", slog.String("error", err.Error()))
+					continue
+				}
+
+				err = timescaleClient.InsertAQI(ctx, aqi)
+				if err != nil {
+					slog.Error("could not insert AQI", slog.String("error", err.Error()))
+				}
+
 			}
 		}
 	}
