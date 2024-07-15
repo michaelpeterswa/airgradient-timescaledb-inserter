@@ -88,6 +88,7 @@ func main() {
 				measures, err := airgradientClient.GetCurrentMeasures(clientURL)
 				if err != nil {
 					slog.Error("could not get measures", slog.String("error", err.Error()))
+					continue
 				}
 				err = timescaleClient.Insert(ctx, measures)
 				if err != nil {
