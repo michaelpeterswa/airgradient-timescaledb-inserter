@@ -12,6 +12,10 @@ import (
 	"github.com/michaelpeterswa/airgradient-timescaledb-inserter/internal/airgradient"
 )
 
+var (
+	ErrorSensorIssue = fmt.Errorf("sensor issue - undefined values")
+)
+
 type TimescaleClient struct {
 	Pool *pgxpool.Pool
 }
@@ -45,6 +49,12 @@ func (c *TimescaleClient) Close() {
 var insertAirgradient string
 
 func (c *TimescaleClient) Insert(ctx context.Context, measure *airgradient.MeasuresCurrentResponse) error {
+	// small hack to prevent the documented sensor issues from ending up in the database
+	// https://github.com/airgradienthq/arduino/issues/190
+	if measure.Rhum < 0 {
+		return ErrorSensorIssue
+	}
+
 	_, err := c.Pool.Exec(ctx, insertAirgradient,
 		time.Now(),
 		measure.Wifi,
