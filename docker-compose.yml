@@ -1,6 +1,5 @@
+# yamllint disable rule:line-length
 ---
-version: "3.3"
-
 services:
   main:
     build: .
