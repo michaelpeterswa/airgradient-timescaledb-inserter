@@ -20,19 +20,19 @@ func NewAirgradientClient(client *http.Client) *AirgradientClient {
 type MeasuresCurrentResponse struct {
 	Wifi            int     `json:"wifi"`
 	Serialno        string  `json:"serialno"`
-	Rco2            int     `json:"rco2"`
-	Pm01            int     `json:"pm01"`
-	Pm02            int     `json:"pm02"`
-	Pm10            int     `json:"pm10"`
-	Pm003Count      int     `json:"pm003Count"`
+	Rco2            float64 `json:"rco2"`
+	Pm01            float64 `json:"pm01"`
+	Pm02            float64 `json:"pm02"`
+	Pm10            float64 `json:"pm10"`
+	Pm003Count      float64 `json:"pm003Count"`
 	Atmp            float64 `json:"atmp"`
-	Rhum            int     `json:"rhum"`
+	Rhum            float64 `json:"rhum"`
 	AtmpCompensated float64 `json:"atmpCompensated"`
-	RhumCompensated int     `json:"rhumCompensated"`
-	TvocIndex       int     `json:"tvocIndex"`
-	TvocRaw         int     `json:"tvocRaw"`
-	NoxIndex        int     `json:"noxIndex"`
-	NoxRaw          int     `json:"noxRaw"`
+	RhumCompensated float64 `json:"rhumCompensated"`
+	TvocIndex       float64 `json:"tvocIndex"`
+	TvocRaw         float64 `json:"tvocRaw"`
+	NoxIndex        float64 `json:"noxIndex"`
+	NoxRaw          float64 `json:"noxRaw"`
 	Boot            int     `json:"boot"`
 	BootCount       int     `json:"bootCount"`
 	Firmware        string  `json:"firmware"`
