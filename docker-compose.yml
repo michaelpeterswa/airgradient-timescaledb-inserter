@@ -4,7 +4,7 @@ services:
   main:
     build: .
     depends_on:
-      seedtimescaledb:
+      migrate:
         condition: service_completed_successfully
     ports:
       - "8081:8081"
@@ -76,13 +76,14 @@ services:
       interval: 5s
       retries: 5
 
-  seedtimescaledb:
-    image: migrate/migrate
-    volumes:
-      - ./docker/timescale/migrations:/migrations
-    entrypoint: >
-      /bin/sh -c 'sleep 5 && migrate -path=/migrations/ -database
-      "postgres://postgres:example@timescaledb:5432/postgres?sslmode=disable" up'
+  # The same image as main, running the embedded migrations. This is the
+  # init-container pattern the cluster uses, exercised locally.
+  migrate:
+    build: .
+    command: ["migrate", "up"]
+    environment:
+      LOG_LEVEL: "info"
+      TIMESCALE_CONN_STRING: "postgres://postgres:example@timescaledb:5432/postgres?sslmode=disable"  # yamllint disable-line rule:line-length
     depends_on:
       timescaledb:
         condition: service_healthy

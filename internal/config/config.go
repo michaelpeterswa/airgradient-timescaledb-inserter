@@ -46,3 +46,21 @@ func NewConfig() (*Config, error) {
 
 	return &cfg, nil
 }
+
+// MigrateConfig is the subset of the environment the migrate command needs.
+// It is parsed separately so an init container does not have to carry the
+// inserter's required settings, such as the list of monitors.
+type MigrateConfig struct {
+	TimescaleConnString string `env:"TIMESCALE_CONN_STRING,required"`
+}
+
+func NewMigrateConfig() (*MigrateConfig, error) {
+	var cfg MigrateConfig
+
+	err := env.Parse(&cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse migrate config: %w", err)
+	}
+
+	return &cfg, nil
+}
