@@ -2,46 +2,47 @@ package config
 
 import (
 	"fmt"
-	"strings"
+	"time"
 
-	"github.com/knadh/koanf/providers/env"
-	"github.com/knadh/koanf/v2"
+	"github.com/caarlos0/env/v11"
 )
 
-const (
-	LogLevel = "log.level"
+type Config struct {
+	LogLevel string `env:"LOG_LEVEL" envDefault:"error"`
 
-	MetricsEnabled = "metrics.enabled"
-	MetricsPort    = "metrics.port"
+	TimescaleConnString string `env:"TIMESCALE_CONN_STRING,required"`
 
-	TracingEnabled    = "tracing.enabled"
-	TracingSampleRate = "tracing.samplerate"
-	TracingService    = "tracing.service"
-	TracingVersion    = "tracing.version"
+	// AirgradientInstances is the comma-separated list of AirGradient hosts
+	// (an IP or hostname, with an optional port) to poll for /measures/current.
+	AirgradientInstances []string `env:"AIRGRADIENT_INSTANCES,required"`
 
-	AirgradientInstances = "airgradient.instances"
+	// ScrapeInterval is how often each instance is polled.
+	ScrapeInterval time.Duration `env:"SCRAPE_INTERVAL" envDefault:"30s"`
 
-	TimescaleConnString = "timescale.conn.string"
+	// ScrapeTimeout bounds one HTTP request to an instance.
+	ScrapeTimeout time.Duration `env:"SCRAPE_TIMEOUT" envDefault:"10s"`
 
-	ScrapeInterval = "scrape.interval"
-	ScrapeTimeout  = "scrape.timeout"
-)
+	// InsertTimeout bounds one database write.
+	InsertTimeout time.Duration `env:"INSERT_TIMEOUT" envDefault:"30s"`
 
-func NewConfig() (*koanf.Koanf, error) {
-	prefix, err := getPrefix()
+	MetricsEnabled bool `env:"METRICS_ENABLED" envDefault:"true"`
+	MetricsPort    int  `env:"METRICS_PORT" envDefault:"8081"`
+
+	Local bool `env:"LOCAL" envDefault:"false"`
+
+	TracingEnabled    bool    `env:"TRACING_ENABLED" envDefault:"false"`
+	TracingSampleRate float64 `env:"TRACING_SAMPLERATE" envDefault:"0.01"`
+	TracingService    string  `env:"TRACING_SERVICE" envDefault:"airgradient-timescaledb-inserter"`
+	TracingVersion    string  `env:"TRACING_VERSION"`
+}
+
+func NewConfig() (*Config, error) {
+	var cfg Config
+
+	err := env.Parse(&cfg)
 	if err != nil {
-		return nil, fmt.Errorf("could not get environment variable prefix: %w", err)
+		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	k := koanf.New(".")
-
-	err = k.Load(env.Provider(prefix, ".", func(s string) string {
-		return strings.Replace(strings.ToLower(
-			strings.TrimPrefix(s, prefix)), "_", ".", -1)
-	}), nil)
-	if err != nil {
-		return nil, fmt.Errorf("could not load environment variables: %w", err)
-	}
-
-	return k, nil
+	return &cfg, nil
 }

@@ -1,58 +1,59 @@
+// Package timescale writes AirGradient readings and the derived AQI into
+// TimescaleDB, and reads the trailing-day averages the AQI is computed from.
 package timescale
 
 import (
 	"context"
+	_ "embed"
+	"errors"
 	"fmt"
 	"time"
 
-	_ "embed"
-
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/michaelpeterswa/airgradient-timescaledb-inserter/internal/airgradient"
 )
 
-var (
-	ErrorSensorIssue = fmt.Errorf("sensor issue - undefined values")
-)
+// ErrSensorIssue is returned when a reading carries the impossible values the
+// firmware emits while a sensor is faulty, so they never reach the database.
+// See https://github.com/airgradienthq/arduino/issues/190.
+var ErrSensorIssue = errors.New("sensor issue - undefined values")
 
-type TimescaleClient struct {
+// Client is a TimescaleDB connection pool.
+type Client struct {
 	Pool *pgxpool.Pool
 }
 
-func NewTimescaleClient(ctx context.Context, connString string) (*TimescaleClient, error) {
+// NewClient opens a connection pool and pings the database.
+func NewClient(ctx context.Context, connString string) (*Client, error) {
 	cfg, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		return nil, fmt.Errorf("create connection pool: %w", err)
 	}
-
 	cfg.ConnConfig.Tracer = otelpgx.NewTracer()
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect to database: %w", err)
 	}
-
-	err = pool.Ping(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+	if err := pool.Ping(ctx); err != nil {
+		return nil, fmt.Errorf("ping database: %w", err)
 	}
-
-	return &TimescaleClient{Pool: pool}, nil
+	return &Client{Pool: pool}, nil
 }
 
-func (c *TimescaleClient) Close() {
-	c.Pool.Close()
-}
+// Close releases the pool.
+func (c *Client) Close() { c.Pool.Close() }
 
 //go:embed queries/insert_airgradient.pgsql
 var insertAirgradient string
 
-func (c *TimescaleClient) Insert(ctx context.Context, measure *airgradient.MeasuresCurrentResponse) error {
-	// small hack to prevent the documented sensor issues from ending up in the database
-	// https://github.com/airgradienthq/arduino/issues/190
+// Insert writes one reading, stamped with the current time. The temperatures are
+// converted from the firmware's Celsius to Fahrenheit to match the table.
+func (c *Client) Insert(ctx context.Context, measure *airgradient.MeasuresCurrentResponse) error {
 	if measure.Rhum < 0 {
-		return ErrorSensorIssue
+		return ErrSensorIssue
 	}
 
 	_, err := c.Pool.Exec(ctx, insertAirgradient,
@@ -64,9 +65,9 @@ func (c *TimescaleClient) Insert(ctx context.Context, measure *airgradient.Measu
 		measure.Pm02,
 		measure.Pm10,
 		measure.Pm003Count,
-		float64((measure.Atmp*9/5)+32), // c to f
+		celsiusToFahrenheit(measure.Atmp),
 		measure.Rhum,
-		float64((measure.AtmpCompensated*9/5)+32), // c to f
+		celsiusToFahrenheit(measure.AtmpCompensated),
 		measure.RhumCompensated,
 		measure.TvocIndex,
 		measure.TvocRaw,
@@ -82,4 +83,8 @@ func (c *TimescaleClient) Insert(ctx context.Context, measure *airgradient.Measu
 	}
 
 	return nil
+}
+
+func celsiusToFahrenheit(c float64) float64 {
+	return c*9/5 + 32
 }

@@ -2,24 +2,39 @@ package main
 
 import (
 	"context"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
+	"os/signal"
+	"syscall"
 	"time"
 
-	"github.com/alpineworks/ootel"
+	"alpineworks.io/ootel"
+	"go.opentelemetry.io/contrib/instrumentation/host"
+	"go.opentelemetry.io/contrib/instrumentation/runtime"
+
 	"github.com/michaelpeterswa/airgradient-timescaledb-inserter/internal/airgradient"
 	"github.com/michaelpeterswa/airgradient-timescaledb-inserter/internal/config"
+	"github.com/michaelpeterswa/airgradient-timescaledb-inserter/internal/inserter"
 	"github.com/michaelpeterswa/airgradient-timescaledb-inserter/internal/logging"
 	"github.com/michaelpeterswa/airgradient-timescaledb-inserter/internal/timescale"
 )
 
 func main() {
-	slogHandler := slog.NewJSONHandler(os.Stdout, nil)
-	slog.SetDefault(slog.New(slogHandler))
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "error"
+	}
 
-	slog.Info("welcome to airgradient-timescaledb-inserter!")
+	slogLevel, err := logging.LogLevelToSlogLevel(logLevel)
+	if err != nil {
+		log.Fatalf("could not convert log level: %s", err)
+	}
+
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slogLevel,
+	})))
 
 	c, err := config.NewConfig()
 	if err != nil {
@@ -27,86 +42,75 @@ func main() {
 		os.Exit(1)
 	}
 
-	slogLevel, err := logging.LogLevelToSlogLevel(c.String(config.LogLevel))
-	if err != nil {
-		slog.Error("could not parse log level", slog.String("error", err.Error()))
-		os.Exit(1)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	exporterType := ootel.ExporterTypePrometheus
+	if c.Local {
+		exporterType = ootel.ExporterTypeOTLPGRPC
 	}
-
-	slog.SetLogLoggerLevel(slogLevel)
-
-	ctx := context.Background()
 
 	ootelClient := ootel.NewOotelClient(
 		ootel.WithMetricConfig(
 			ootel.NewMetricConfig(
-				c.Bool(config.MetricsEnabled),
-				c.Int(config.MetricsPort),
+				c.MetricsEnabled,
+				exporterType,
+				c.MetricsPort,
 			),
 		),
 		ootel.WithTraceConfig(
 			ootel.NewTraceConfig(
-				c.Bool(config.TracingEnabled),
-				c.Float64(config.TracingSampleRate),
-				c.String(config.TracingService),
-				c.String(config.TracingVersion),
+				c.TracingEnabled,
+				c.TracingSampleRate,
+				c.TracingService,
+				c.TracingVersion,
 			),
 		),
 	)
 
 	shutdown, err := ootelClient.Init(ctx)
 	if err != nil {
-		panic(err)
+		slog.Error("could not create ootel client", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer func() { _ = shutdown(context.Background()) }()
+
+	if err := runtime.Start(runtime.WithMinimumReadMemStatsInterval(5 * time.Second)); err != nil {
+		slog.Error("could not create runtime metrics", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	if err := host.Start(); err != nil {
+		slog.Error("could not create host metrics", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 
-	defer func() {
-		_ = shutdown(ctx)
-	}()
-
-	timescaleClient, err := timescale.NewTimescaleClient(ctx, c.String(config.TimescaleConnString))
+	timescaleClient, err := timescale.NewClient(ctx, c.TimescaleConnString)
 	if err != nil {
 		slog.Error("could not create timescale client", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	defer timescaleClient.Close()
 
-	airgradientClient := airgradient.NewAirgradientClient(&http.Client{
-		Timeout: c.Duration(config.ScrapeTimeout),
+	airgradientClient := airgradient.NewClient(&http.Client{
+		Timeout: c.ScrapeTimeout,
 	})
 
-	airgradientInstances := strings.Split(c.String(config.AirgradientInstances), ",")
-
-	scrapeInterval := c.Duration(config.ScrapeInterval)
-	scrapeTicker := time.NewTicker(scrapeInterval)
-	defer scrapeTicker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-scrapeTicker.C:
-			for _, clientURL := range airgradientInstances {
-				measures, err := airgradientClient.GetCurrentMeasures(clientURL)
-				if err != nil {
-					slog.Error("could not get measures", slog.String("error", err.Error()))
-					continue
-				}
-				err = timescaleClient.Insert(ctx, measures)
-				if err != nil {
-					slog.Error("could not insert measures", slog.String("error", err.Error()))
-				}
-
-				aqi, err := timescaleClient.CalculateAQI(ctx, measures.Serialno)
-				if err != nil {
-					slog.Error("could not calculate AQI", slog.String("error", err.Error()))
-					continue
-				}
-
-				err = timescaleClient.InsertAQI(ctx, aqi)
-				if err != nil {
-					slog.Error("could not insert AQI", slog.String("error", err.Error()))
-				}
-
-			}
-		}
+	metrics, err := inserter.NewMetrics()
+	if err != nil {
+		slog.Error("could not create metrics", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
+
+	runner := inserter.NewRunner(c, airgradientClient, timescaleClient, metrics)
+
+	slog.Info("airgradient timescaledb inserter started",
+		slog.Any("instances", c.AirgradientInstances),
+		slog.Duration("scrape_interval", c.ScrapeInterval))
+
+	if err := runner.Run(ctx); err != nil {
+		slog.Error("runner stopped with an error", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	slog.Info("shutdown complete")
 }

@@ -1,22 +1,28 @@
+// Package airgradient polls the local HTTP API of an AirGradient monitor.
 package airgradient
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 )
 
-type AirgradientClient struct {
+// Client fetches readings from AirGradient monitors over their local API.
+type Client struct {
 	client *http.Client
 }
 
-func NewAirgradientClient(client *http.Client) *AirgradientClient {
-	return &AirgradientClient{
+// NewClient wraps an HTTP client. Set the client's Timeout to bound a scrape.
+func NewClient(client *http.Client) *Client {
+	return &Client{
 		client: client,
 	}
 }
 
+// MeasuresCurrentResponse is the body of GET /measures/current on the monitor.
+// The temperature fields are Celsius, as the firmware reports them.
 type MeasuresCurrentResponse struct {
 	Wifi            int     `json:"wifi"`
 	Serialno        string  `json:"serialno"`
@@ -39,25 +45,32 @@ type MeasuresCurrentResponse struct {
 	Model           string  `json:"model"`
 }
 
-func (ac *AirgradientClient) GetCurrentMeasures(url string) (*MeasuresCurrentResponse, error) {
-	reqUrl := fmt.Sprintf("http://%s/measures/current", url)
+// GetCurrentMeasures fetches the current readings from one monitor. The host is
+// an IP or hostname with an optional port, without a scheme.
+func (c *Client) GetCurrentMeasures(ctx context.Context, host string) (*MeasuresCurrentResponse, error) {
+	reqURL := fmt.Sprintf("http://%s/measures/current", host)
 
-	resp, err := ac.client.Get(reqUrl)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("could not get measures from %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("could not read response body from %s: %w", url, err)
+		return nil, fmt.Errorf("build request for %s: %w", host, err)
 	}
 
-	var measuresCurrentResponse MeasuresCurrentResponse
-	err = json.Unmarshal(body, &measuresCurrentResponse)
+	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("could not unmarshal response body from %s: %w", url, err)
+		return nil, fmt.Errorf("get measures from %s: %w", host, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		// Drain a little of the body so the connection can be reused.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("get measures from %s: unexpected status %s", host, resp.Status)
 	}
 
-	return &measuresCurrentResponse, nil
+	var measures MeasuresCurrentResponse
+	if err := json.NewDecoder(resp.Body).Decode(&measures); err != nil {
+		return nil, fmt.Errorf("decode response body from %s: %w", host, err)
+	}
+
+	return &measures, nil
 }
