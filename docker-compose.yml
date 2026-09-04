@@ -9,27 +9,26 @@ services:
     ports:
       - "8081:8081"
     environment:
-      # setting up koanf prefix to read environment variables
-      CONFIG_PREFIX: "ATI_"
-
       # logging
-      ATI_LOG_LEVEL: "info"
+      LOG_LEVEL: "info"
 
       # metrics
-      ATI_METRICS_ENABLED: "true"
-      ATI_METRICS_PORT: "8081"
+      METRICS_ENABLED: "true"
+      METRICS_PORT: "8081"
 
       # tracing
-      ATI_TRACING_ENABLED: "false"
-      ATI_TRACING_SAMPLERATE: "1.0"
-      ATI_TRACING_SERVICE: "airgradient-timescaledb-inserter"
-      ATI_TRACING_VERSION: "0.0.1"
+      TRACING_ENABLED: "false"
+      TRACING_SAMPLERATE: "1.0"
+      TRACING_SERVICE: "airgradient-timescaledb-inserter"
+      TRACING_VERSION: "0.0.1"
 
-      ATI_AIRGRADIENT_INSTANCES: "10.0.1.250,10.0.0.34"
+      AIRGRADIENT_INSTANCES: "10.0.1.250,10.0.0.34"
 
-      ATI_TIMESCALE_CONN_STRING: "postgres://postgres:example@timescaledb:5432/postgres?sslmode=disable" # yamllint disable-line rule:line-length
+      TIMESCALE_CONN_STRING: "postgres://postgres:example@timescaledb:5432/postgres?sslmode=disable"  # yamllint disable-line rule:line-length
 
-      ATI_SCRAPE_INTERVAL: "10s"
+      SCRAPE_INTERVAL: "10s"
+      SCRAPE_TIMEOUT: "10s"
+      INSERT_TIMEOUT: "30s"
 
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4317"
 
