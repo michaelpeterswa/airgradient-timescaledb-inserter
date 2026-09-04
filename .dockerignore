@@ -1,0 +1,9 @@
+.git
+.github
+.githooks
+*_test.go
+README.md
+LICENSE
+Makefile
+docker/
+docker-compose.yml
